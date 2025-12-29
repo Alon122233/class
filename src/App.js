@@ -12,6 +12,12 @@ export default function ClassroomNoiseControl() {
     presentationMode: false,
   });
   
+  // AI Notification Log
+  const [notifications, setNotifications] = useState([
+    { id: 1, time: new Date().toLocaleTimeString(), type: 'system', icon: '🟢', message: 'AI System initialized successfully', area: null },
+    { id: 2, time: new Date().toLocaleTimeString(), type: 'info', icon: '🤖', message: 'AI monitoring active - All microphones online', area: null },
+  ]);
+  
   // Animation state
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
@@ -26,7 +32,21 @@ export default function ClassroomNoiseControl() {
     lastNoiseTime: 0,
     lastOutsideTime: 0,
     lastTeacherTime: 0,
+    lastNotificationTime: 0,
   });
+
+  // Add notification helper
+  const addNotification = (type, icon, message, area = null) => {
+    const newNotification = {
+      id: Date.now() + Math.random(),
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      type,
+      icon,
+      message,
+      area,
+    };
+    setNotifications(prev => [newNotification, ...prev].slice(0, 50)); // Keep last 50
+  };
 
   // Classroom layout
   const classroom = {
@@ -50,12 +70,12 @@ export default function ClassroomNoiseControl() {
       { id: 6, x: 740, y: 420, label: 'SPK-6' },
     ],
     microphones: [
-      { id: 1, x: 180, y: 130, label: 'MIC-1' },
-      { id: 2, x: 450, y: 130, label: 'MIC-2' },
-      { id: 3, x: 720, y: 130, label: 'MIC-3' },
-      { id: 4, x: 180, y: 280, label: 'MIC-4' },
-      { id: 5, x: 450, y: 280, label: 'MIC-5' },
-      { id: 6, x: 720, y: 280, label: 'MIC-6' },
+      { id: 1, x: 180, y: 130, label: 'MIC-1', area: 'Back-Left' },
+      { id: 2, x: 450, y: 130, label: 'MIC-2', area: 'Back-Center' },
+      { id: 3, x: 720, y: 130, label: 'MIC-3', area: 'Back-Right' },
+      { id: 4, x: 180, y: 280, label: 'MIC-4', area: 'Front-Left' },
+      { id: 5, x: 450, y: 280, label: 'MIC-5', area: 'Front-Center' },
+      { id: 6, x: 720, y: 280, label: 'MIC-6', area: 'Front-Right' },
     ],
   };
 
@@ -77,6 +97,20 @@ export default function ClassroomNoiseControl() {
 
   const allStudents = classroom.desks.flatMap(desk => desk.students);
 
+  // Find nearest microphone to a position
+  const findNearestMic = (x, y) => {
+    let nearest = classroom.microphones[0];
+    let minDist = Infinity;
+    classroom.microphones.forEach(mic => {
+      const dist = Math.sqrt(Math.pow(mic.x - x, 2) + Math.pow(mic.y - y, 2));
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = mic;
+      }
+    });
+    return nearest;
+  };
+
   // Noise levels for UI
   const [noiseLevels, setNoiseLevels] = useState({
     overall: 35,
@@ -90,6 +124,26 @@ export default function ClassroomNoiseControl() {
     activeSpeakers: 0,
     cancelledWaves: 0,
   });
+
+  // Mode change notifications
+  useEffect(() => {
+    if (modes.testMode) {
+      addNotification('alert', '📝', 'EXAM MODE ACTIVATED - Maximum silence enforced', null);
+      addNotification('info', '🤖', 'AI sensitivity increased to detect whispers', null);
+    }
+  }, [modes.testMode]);
+
+  useEffect(() => {
+    if (modes.groupWork) {
+      addNotification('info', '👥', 'GROUP WORK MODE - Allowing moderate conversation', null);
+    }
+  }, [modes.groupWork]);
+
+  useEffect(() => {
+    if (modes.presentationMode) {
+      addNotification('info', '📊', 'PRESENTATION MODE - Focus on speaker area', null);
+    }
+  }, [modes.presentationMode]);
 
   // Main animation loop
   useEffect(() => {
@@ -129,12 +183,30 @@ export default function ClassroomNoiseControl() {
       
       // Generate noise based on modes
       if (systemActive) {
-        // Student chatter - slower
+        // Student chatter
         if ((modes.studentChatter || modes.testMode) && timestamp - state.lastNoiseTime > 1500) {
           if (Math.random() < (modes.testMode ? 0.2 : modes.groupWork ? 0.35 : 0.3)) {
             state.lastNoiseTime = timestamp;
             const student = allStudents[Math.floor(Math.random() * allStudents.length)];
             state.activeStudents.add(student.id);
+            
+            // Find nearest mic and add AI notification
+            const nearestMic = findNearestMic(student.x, student.y);
+            const confidence = (85 + Math.random() * 14).toFixed(1);
+            
+            if (modes.testMode) {
+              addNotification('warning', '⚠️', `AI detected student talking during EXAM near ${nearestMic.label} (${nearestMic.area})`, nearestMic.area);
+              addNotification('action', '🔊', `Initiating noise cancellation - Confidence: ${confidence}%`, nearestMic.area);
+            } else if (timestamp - state.lastNotificationTime > 3000) {
+              state.lastNotificationTime = timestamp;
+              const messages = [
+                `AI recognized voice activity in ${nearestMic.area} area (${nearestMic.label})`,
+                `Speech pattern detected near ${nearestMic.label} - ${nearestMic.area} zone`,
+                `${nearestMic.label} picked up student conversation - Confidence: ${confidence}%`,
+                `Voice analysis: Student talking detected at ${nearestMic.area}`,
+              ];
+              addNotification('detect', '🎤', messages[Math.floor(Math.random() * messages.length)], nearestMic.area);
+            }
             
             state.noiseWaves.push({
               id: Date.now() + Math.random(),
@@ -152,12 +224,20 @@ export default function ClassroomNoiseControl() {
           }
         }
         
-        // Outside noise - slower
+        // Outside noise
         if (modes.outsideNoise && timestamp - state.lastOutsideTime > 4000) {
           if (Math.random() < 0.3) {
             state.lastOutsideTime = timestamp;
             state.outsideNoiseActive = true;
-            const win = classroom.windows[Math.floor(Math.random() * classroom.windows.length)];
+            const winIndex = Math.floor(Math.random() * classroom.windows.length);
+            const win = classroom.windows[winIndex];
+            
+            const noiseTypes = ['traffic', 'construction', 'voices', 'vehicle horn', 'siren'];
+            const noiseType = noiseTypes[Math.floor(Math.random() * noiseTypes.length)];
+            const decibels = (55 + Math.random() * 25).toFixed(0);
+            
+            addNotification('external', '🚗', `AI detected external noise (${noiseType}) from Window ${winIndex + 1} - ${decibels}dB`, `Window ${winIndex + 1}`);
+            addNotification('action', '🔊', `Activating speakers SPK-5, SPK-6 for cancellation`, null);
             
             state.noiseWaves.push({
               id: Date.now() + Math.random(),
@@ -170,15 +250,20 @@ export default function ClassroomNoiseControl() {
               cancelled: false,
             });
             
-            setTimeout(() => state.outsideNoiseActive = false, 3000);
+            setTimeout(() => {
+              state.outsideNoiseActive = false;
+              addNotification('success', '✅', `External noise successfully cancelled - Reduction: ${(85 + Math.random() * 12).toFixed(0)}%`, null);
+            }, 3000);
           }
         }
         
-        // Teacher speaking - slower
+        // Teacher speaking
         if (modes.teacherMode && timestamp - state.lastTeacherTime > 5000) {
           if (Math.random() < 0.25) {
             state.lastTeacherTime = timestamp;
             state.teacherSpeaking = true;
+            
+            addNotification('teacher', '👨‍🏫', 'AI recognized teacher voice - Cancellation bypassed', 'Teacher Area');
             
             state.noiseWaves.push({
               id: Date.now() + Math.random(),
@@ -198,7 +283,6 @@ export default function ClassroomNoiseControl() {
       
       // Draw windows
       classroom.windows.forEach(win => {
-        // Window glow when outside noise
         if (state.outsideNoiseActive) {
           ctx.shadowColor = '#ef4444';
           ctx.shadowBlur = 20;
@@ -244,12 +328,10 @@ export default function ClassroomNoiseControl() {
       // Draw desks
       classroom.desks.forEach(desk => {
         ctx.fillStyle = 'rgba(51, 65, 85, 0.7)';
-        ctx.beginPath();
-        ctx.roundRect(desk.x - 40, desk.y - 20, 80, 40, 5);
-        ctx.fill();
+        ctx.fillRect(desk.x - 40, desk.y - 20, 80, 40);
         ctx.strokeStyle = 'rgba(100, 116, 139, 0.5)';
         ctx.lineWidth = 1;
-        ctx.stroke();
+        ctx.strokeRect(desk.x - 40, desk.y - 20, 80, 40);
       });
       
       // Process and draw noise waves
@@ -271,10 +353,10 @@ export default function ClassroomNoiseControl() {
           shouldCancel = modes.outsideNoise;
         } else if (wave.type === 'teacher') {
           color = `rgba(34, 197, 94, ${opacity * 0.6})`;
-          shouldCancel = !modes.teacherMode; // Don't cancel if teacher mode is ON
+          shouldCancel = !modes.teacherMode;
         }
         
-        // Draw noise wave with multiple rings
+        // Draw noise wave
         for (let i = 0; i < 3; i++) {
           const r = wave.radius - i * 8;
           if (r > 0) {
@@ -291,13 +373,11 @@ export default function ClassroomNoiseControl() {
           wave.cancelled = true;
           cancelledCount++;
           
-          // Find ALL speakers and activate them
           classroom.speakers.forEach((speaker, idx) => {
             const dist = Math.sqrt(Math.pow(speaker.x - wave.x, 2) + Math.pow(speaker.y - wave.y, 2));
-            if (dist < 400) { // Speakers within range
+            if (dist < 400) {
               state.activeSpeakers.add(speaker.id);
               
-              // Create cancel wave from speaker toward noise
               state.cancelWaves.push({
                 id: Date.now() + idx + Math.random(),
                 x: speaker.x,
@@ -317,7 +397,7 @@ export default function ClassroomNoiseControl() {
         return true;
       });
       
-      // Draw cancel waves from speakers
+      // Draw cancel waves
       state.cancelWaves = state.cancelWaves.filter(wave => {
         wave.radius += wave.speed;
         if (wave.radius >= wave.maxRadius) return false;
@@ -328,7 +408,6 @@ export default function ClassroomNoiseControl() {
         const angle = Math.atan2(wave.targetY - wave.y, wave.targetX - wave.x);
         const spread = Math.PI / 2;
         
-        // Draw directional cancel wave
         const gradient = ctx.createRadialGradient(wave.x, wave.y, 0, wave.x, wave.y, wave.radius);
         gradient.addColorStop(0, `rgba(16, 185, 129, ${opacity * 0.6})`);
         gradient.addColorStop(0.5, `rgba(16, 185, 129, ${opacity * 0.3})`);
@@ -341,24 +420,11 @@ export default function ClassroomNoiseControl() {
         ctx.fillStyle = gradient;
         ctx.fill();
         
-        // Wave edge
         ctx.beginPath();
         ctx.arc(wave.x, wave.y, wave.radius, angle - spread, angle + spread);
         ctx.strokeStyle = `rgba(16, 185, 129, ${opacity * 0.9})`;
         ctx.lineWidth = 2;
         ctx.stroke();
-        
-        // Inner rings
-        for (let i = 1; i <= 2; i++) {
-          const r = wave.radius - i * 15;
-          if (r > 0) {
-            ctx.beginPath();
-            ctx.arc(wave.x, wave.y, r, angle - spread, angle + spread);
-            ctx.strokeStyle = `rgba(16, 185, 129, ${opacity * 0.4})`;
-            ctx.lineWidth = 1;
-            ctx.stroke();
-          }
-        }
         
         return true;
       });
@@ -367,14 +433,12 @@ export default function ClassroomNoiseControl() {
       allStudents.forEach(student => {
         const isActive = state.activeStudents.has(student.id);
         
-        // Outer glow for active students
         if (isActive) {
           ctx.beginPath();
           ctx.arc(student.x, student.y, 18, 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(251, 146, 60, 0.3)';
           ctx.fill();
           
-          // Pulsing ring
           const pulseRadius = 12 + Math.sin(state.tick * 0.1) * 3;
           ctx.beginPath();
           ctx.arc(student.x, student.y, pulseRadius, 0, Math.PI * 2);
@@ -383,7 +447,6 @@ export default function ClassroomNoiseControl() {
           ctx.stroke();
         }
         
-        // Student dot
         ctx.beginPath();
         ctx.arc(student.x, student.y, 9, 0, Math.PI * 2);
         ctx.fillStyle = isActive ? '#fb923c' : '#3b82f6';
@@ -398,11 +461,6 @@ export default function ClassroomNoiseControl() {
         ctx.arc(student.x - 2, student.y - 2, 1.5, 0, Math.PI * 2);
         ctx.arc(student.x + 2, student.y - 2, 1.5, 0, Math.PI * 2);
         ctx.fill();
-        if (isActive) {
-          ctx.beginPath();
-          ctx.arc(student.x, student.y + 2, 3, 0, Math.PI);
-          ctx.stroke();
-        }
       });
       
       // Draw teacher
@@ -428,19 +486,16 @@ export default function ClassroomNoiseControl() {
       ctx.textBaseline = 'middle';
       ctx.fillText('T', classroom.teacher.x, classroom.teacher.y);
       
-      // Draw speakers with activation effects
+      // Draw speakers
       classroom.speakers.forEach(speaker => {
         const isActive = state.activeSpeakers.has(speaker.id);
         
-        // Active speaker effects
         if (isActive) {
-          // Outer glow
           ctx.beginPath();
           ctx.arc(speaker.x, speaker.y, 25 + Math.sin(state.tick * 0.15) * 3, 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
           ctx.fill();
           
-          // Pulsing rings
           for (let i = 0; i < 3; i++) {
             const ringRadius = 18 + i * 8 + Math.sin(state.tick * 0.1 + i) * 2;
             ctx.beginPath();
@@ -451,16 +506,10 @@ export default function ClassroomNoiseControl() {
           }
         }
         
-        // Speaker body
-        ctx.beginPath();
-        ctx.roundRect(speaker.x - 15, speaker.y - 10, 30, 20, 4);
         ctx.fillStyle = isActive ? '#10b981' : '#6366f1';
-        ctx.shadowColor = isActive ? '#10b981' : '#6366f1';
-        ctx.shadowBlur = isActive ? 20 : 10;
-        ctx.fill();
+        ctx.fillRect(speaker.x - 15, speaker.y - 10, 30, 20);
         ctx.shadowBlur = 0;
         
-        // Speaker icon
         ctx.fillStyle = isActive ? '#064e3b' : '#312e81';
         ctx.fillRect(speaker.x - 8, speaker.y - 5, 4, 10);
         ctx.beginPath();
@@ -471,7 +520,6 @@ export default function ClassroomNoiseControl() {
         ctx.closePath();
         ctx.fill();
         
-        // Sound waves when active
         if (isActive) {
           ctx.strokeStyle = '#064e3b';
           ctx.lineWidth = 2;
@@ -482,7 +530,6 @@ export default function ClassroomNoiseControl() {
           }
         }
         
-        // Label
         ctx.fillStyle = '#94a3b8';
         ctx.font = '9px sans-serif';
         ctx.textAlign = 'center';
@@ -491,7 +538,6 @@ export default function ClassroomNoiseControl() {
       
       // Draw microphones
       classroom.microphones.forEach(mic => {
-        // Mic listening indicator
         const listening = state.noiseWaves.some(w => {
           const dist = Math.sqrt(Math.pow(w.x - mic.x, 2) + Math.pow(w.y - mic.y, 2));
           return dist < w.radius + 50;
@@ -512,11 +558,8 @@ export default function ClassroomNoiseControl() {
         ctx.fill();
         ctx.shadowBlur = 0;
         
-        // Mic icon
         ctx.fillStyle = '#7f1d1d';
-        ctx.beginPath();
-        ctx.roundRect(mic.x - 3, mic.y - 6, 6, 8, 2);
-        ctx.fill();
+        ctx.fillRect(mic.x - 3, mic.y - 6, 6, 8);
         ctx.fillRect(mic.x - 1, mic.y + 2, 2, 4);
         
         ctx.fillStyle = '#94a3b8';
@@ -573,6 +616,25 @@ export default function ClassroomNoiseControl() {
     });
   };
 
+  const getNotificationStyle = (type) => {
+    switch(type) {
+      case 'warning': return { bg: 'rgba(251, 191, 36, 0.15)', border: '#fbbf24', text: '#fbbf24' };
+      case 'alert': return { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', text: '#ef4444' };
+      case 'success': return { bg: 'rgba(16, 185, 129, 0.15)', border: '#10b981', text: '#10b981' };
+      case 'action': return { bg: 'rgba(99, 102, 241, 0.15)', border: '#6366f1', text: '#6366f1' };
+      case 'teacher': return { bg: 'rgba(34, 197, 94, 0.15)', border: '#22c55e', text: '#22c55e' };
+      case 'external': return { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', text: '#f87171' };
+      case 'detect': return { bg: 'rgba(251, 146, 60, 0.15)', border: '#fb923c', text: '#fb923c' };
+      case 'system': return { bg: 'rgba(16, 185, 129, 0.15)', border: '#10b981', text: '#10b981' };
+      default: return { bg: 'rgba(100, 116, 139, 0.15)', border: '#64748b', text: '#94a3b8' };
+    }
+  };
+
+  const clearNotifications = () => {
+    setNotifications([]);
+    addNotification('system', '🗑️', 'Notification log cleared', null);
+  };
+
   return (
     <div style={styles.container}>
       {/* Control Panel */}
@@ -581,7 +643,7 @@ export default function ClassroomNoiseControl() {
           <div style={styles.logoIcon}>🎓</div>
           <div>
             <div style={styles.logoTitle}>ClassRoom ANC</div>
-            <div style={styles.logoSubtitle}>Active Noise Control System</div>
+            <div style={styles.logoSubtitle}>AI-Powered Noise Control</div>
           </div>
         </div>
 
@@ -597,7 +659,15 @@ export default function ClassroomNoiseControl() {
                 ? '0 0 30px rgba(16, 185, 129, 0.4)' 
                 : '0 0 30px rgba(239, 68, 68, 0.4)',
             }}
-            onClick={() => setSystemActive(!systemActive)}
+            onClick={() => {
+              setSystemActive(!systemActive);
+              addNotification(
+                systemActive ? 'alert' : 'success',
+                systemActive ? '🔴' : '🟢',
+                systemActive ? 'System deactivated - Noise cancellation stopped' : 'System activated - AI monitoring started',
+                null
+              );
+            }}
           >
             <span style={styles.powerIcon}>{systemActive ? '⏻' : '⭘'}</span>
             <span>{systemActive ? 'SYSTEM ACTIVE' : 'SYSTEM OFF'}</span>
@@ -662,14 +732,41 @@ export default function ClassroomNoiseControl() {
           />
         </div>
 
-        {/* Live Stats */}
+        {/* AI Notification Log */}
         <div style={styles.section}>
-          <div style={styles.sectionTitle}>📊 Live Monitoring</div>
+          <div style={styles.sectionHeader}>
+            <div style={styles.sectionTitle}>🤖 AI Notification Log</div>
+            <button onClick={clearNotifications} style={styles.clearBtn}>Clear</button>
+          </div>
           
-          <StatBar label="Overall Noise" value={noiseLevels.overall} color={noiseLevels.overall > 60 ? '#ef4444' : noiseLevels.overall > 40 ? '#f59e0b' : '#10b981'} />
-          <StatBar label="Student Noise" value={noiseLevels.students} color="#fb923c" />
-          <StatBar label="Outside Noise" value={noiseLevels.outside} color="#ef4444" />
-          <StatBar label="Noise Reduction" value={noiseLevels.reduced} color="#10b981" suffix="%" />
+          <div style={styles.notificationContainer}>
+            {notifications.slice(0, 15).map(notif => {
+              const style = getNotificationStyle(notif.type);
+              return (
+                <div 
+                  key={notif.id} 
+                  style={{
+                    ...styles.notification,
+                    background: style.bg,
+                    borderLeftColor: style.border,
+                  }}
+                >
+                  <div style={styles.notificationHeader}>
+                    <span style={styles.notificationIcon}>{notif.icon}</span>
+                    <span style={styles.notificationTime}>{notif.time}</span>
+                    {notif.area && (
+                      <span style={{...styles.notificationArea, background: style.border}}>
+                        {notif.area}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{...styles.notificationMessage, color: style.text}}>
+                    {notif.message}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Legend */}
@@ -699,8 +796,13 @@ export default function ClassroomNoiseControl() {
                 background: systemActive ? '#10b981' : '#ef4444',
                 boxShadow: `0 0 10px ${systemActive ? '#10b981' : '#ef4444'}`,
               }} />
-              {systemActive ? 'ONLINE' : 'OFFLINE'}
+              {systemActive ? 'AI MONITORING' : 'OFFLINE'}
             </div>
+            {modes.testMode && (
+              <div style={{...styles.statusBadge, background: 'rgba(251, 191, 36, 0.2)', borderColor: '#fbbf24'}}>
+                📝 EXAM MODE
+              </div>
+            )}
           </div>
         </div>
         
@@ -784,18 +886,6 @@ const PresetButton = ({ icon, name, active, onClick }) => (
   </button>
 );
 
-const StatBar = ({ label, value, color, suffix = 'dB' }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-    <div style={{ width: 100, fontSize: 11, color: '#94a3b8' }}>{label}</div>
-    <div style={{ flex: 1, height: 8, background: 'rgba(100, 116, 139, 0.2)', borderRadius: 4, overflow: 'hidden' }}>
-      <div style={{ width: `${Math.min(100, value)}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.2s ease' }} />
-    </div>
-    <div style={{ width: 50, fontSize: 12, fontWeight: 600, textAlign: 'right', color: '#fff', fontFamily: 'monospace' }}>
-      {value.toFixed(0)}{suffix}
-    </div>
-  </div>
-);
-
 const LegendItem = ({ color, label }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
     <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}50` }} />
@@ -827,13 +917,13 @@ const styles = {
     color: '#fff',
   },
   controlPanel: {
-    width: 340,
+    width: 380,
     background: 'rgba(15, 23, 42, 0.95)',
     borderRight: '1px solid rgba(100, 116, 139, 0.2)',
     padding: 24,
     display: 'flex',
     flexDirection: 'column',
-    gap: 24,
+    gap: 20,
     overflowY: 'auto',
   },
   logo: {
@@ -866,11 +956,25 @@ const styles = {
     flexDirection: 'column',
     gap: 10,
   },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   sectionTitle: {
     fontSize: 13,
     fontWeight: 600,
     color: '#94a3b8',
     marginBottom: 6,
+  },
+  clearBtn: {
+    padding: '4px 10px',
+    background: 'rgba(239, 68, 68, 0.2)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: 6,
+    color: '#f87171',
+    fontSize: 10,
+    cursor: 'pointer',
   },
   powerButton: {
     display: 'flex',
@@ -890,8 +994,47 @@ const styles = {
   powerIcon: {
     fontSize: 22,
   },
+  notificationContainer: {
+    maxHeight: 280,
+    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    paddingRight: 5,
+  },
+  notification: {
+    padding: '10px 12px',
+    borderRadius: 10,
+    borderLeft: '4px solid',
+    transition: 'all 0.2s ease',
+  },
+  notificationHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  notificationIcon: {
+    fontSize: 14,
+  },
+  notificationTime: {
+    fontSize: 10,
+    color: '#64748b',
+    fontFamily: 'monospace',
+  },
+  notificationArea: {
+    padding: '2px 8px',
+    borderRadius: 10,
+    fontSize: 9,
+    fontWeight: 600,
+    color: '#fff',
+    marginLeft: 'auto',
+  },
+  notificationMessage: {
+    fontSize: 11,
+    lineHeight: 1.4,
+  },
   legend: {
-    marginTop: 'auto',
     padding: 16,
     background: 'rgba(30, 41, 59, 0.5)',
     borderRadius: 12,

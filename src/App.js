@@ -20,34 +20,74 @@ export default function ClassroomMonitoringSystem() {
     return () => clearInterval(timer);
   }, []);
 
+  // Track which classrooms are currently "active"
+  const activeClassRef = useRef({ ids: [], since: 0, levels: {} });
+
+  const pickRandomClassroom = (prev, excludeIds) => {
+    const available = prev.filter(c => !excludeIds.includes(c.id));
+    if (available.length === 0) return prev[0].id;
+    const weights = available.map(c => (1 - c.discipline) + 0.1);
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * totalWeight;
+    for (let i = 0; i < available.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return available[i].id;
+    }
+    return available[0].id;
+  };
+
   useEffect(() => {
     const updateInterval = setInterval(() => {
-      setClassrooms(prev => prev.map(classroom => {
-        const random = Math.random();
-        let newTalking = classroom.talkingCount;
-        let newAlerts = classroom.alerts;
-        let newStatus = classroom.status;
-        let newLastAlert = classroom.lastAlert;
+      setClassrooms(prev => {
+        const now = Date.now();
+        const ref = activeClassRef.current;
 
-        // 50/50 chance - either start talking or quiet down
-        if (random < 0.3) {
-          // Someone starts talking
-          newTalking = Math.min(3, newTalking + 1);
-          newAlerts += 1;
-          newLastAlert = 'עכשיו';
-        } else if (random < 0.6) {
-          // Class quiets down
-          newTalking = Math.max(0, newTalking - 1);
+        // Rotate every 10-18 seconds
+        const elapsed = now - ref.since;
+        const shouldRotate = ref.ids.length === 0 || elapsed > (10000 + Math.random() * 8000);
+
+        if (shouldRotate) {
+          // 75% one classroom, 25% two classrooms
+          const twoClassrooms = Math.random() < 0.25;
+          
+          const id1 = pickRandomClassroom(prev, []);
+          // 80% yellow, 20% red for each
+          const level1 = Math.random() < 0.8 ? 1 : 2;
+          
+          const newLevels = { [id1]: level1 };
+          const newIds = [id1];
+
+          if (twoClassrooms) {
+            const id2 = pickRandomClassroom(prev, [id1]);
+            const level2 = Math.random() < 0.8 ? 1 : 2;
+            newLevels[id2] = level2;
+            newIds.push(id2);
+          }
+
+          ref.ids = newIds;
+          ref.since = now;
+          ref.levels = newLevels;
         }
-        // 40% chance nothing changes
 
-        // Update status based on talking count
-        if (newTalking === 0) newStatus = 'green';
-        else if (newTalking === 1) newStatus = 'yellow';
-        else newStatus = 'red';
+        return prev.map(classroom => {
+          let newTalking = 0;
+          let newAlerts = classroom.alerts;
+          let newStatus = 'green';
+          let newLastAlert = classroom.lastAlert;
 
-        return { ...classroom, talkingCount: newTalking, alerts: newAlerts, status: newStatus, lastAlert: newLastAlert };
-      }));
+          if (ref.ids.includes(classroom.id)) {
+            newTalking = ref.levels[classroom.id] || 1;
+            newAlerts = classroom.alerts + (classroom.talkingCount === 0 ? 1 : 0);
+            newLastAlert = 'עכשיו';
+          }
+
+          if (newTalking === 0) newStatus = 'green';
+          else if (newTalking === 1) newStatus = 'yellow';
+          else newStatus = 'red';
+
+          return { ...classroom, talkingCount: newTalking, alerts: newAlerts, status: newStatus, lastAlert: newLastAlert };
+        });
+      });
     }, 2000);
 
     return () => clearInterval(updateInterval);
@@ -74,26 +114,26 @@ export default function ClassroomMonitoringSystem() {
   }
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="main-container">
       {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <div style={styles.logoBox}>🎓</div>
+      <div style={styles.header} className="main-header">
+        <div style={styles.headerLeft} className="header-left">
+          <div style={styles.logoBox} className="logo-box">🎓</div>
           <div>
-            <h1 style={styles.logoTitle}>מוניטור כיתות חכם</h1>
-            <p style={styles.logoSub}>מערכת ניטור כיתות מבוססת בינה מלאכותית</p>
+            <h1 style={styles.logoTitle} className="logo-title">מוניטור כיתות חכם</h1>
+            <p style={styles.logoSub} className="logo-sub">מערכת ניטור כיתות מבוססת בינה מלאכותית</p>
           </div>
         </div>
         <div style={styles.headerRight}>
-          <div style={styles.clockBox}>
-            <div style={styles.clockTime}>{formatTime(currentTime)}</div>
-            <div style={styles.clockDate}>{formatDate(currentTime)}</div>
+          <div style={styles.clockBox} className="clock-box">
+            <div style={styles.clockTime} className="clock-time">{formatTime(currentTime)}</div>
+            <div style={styles.clockDate} className="clock-date">{formatDate(currentTime)}</div>
           </div>
         </div>
       </div>
 
       {/* Stats Bar */}
-      <div style={styles.statsBar}>
+      <div style={styles.statsBar} className="stats-bar">
         {[
           { icon: '🏫', value: classrooms.length, label: 'סה"כ כיתות', color: '#6366f1' },
           { icon: '👥', value: totalStudents, label: 'סה"כ תלמידים', color: '#3b82f6' },
@@ -101,16 +141,16 @@ export default function ClassroomMonitoringSystem() {
           { icon: '⚠️', value: activeClasses, label: 'כיתות עם פעילות', color: '#f59e0b' },
           { icon: '✅', value: classrooms.filter(c => c.status === 'green').length, label: 'כיתות שקטות', color: '#10b981' },
         ].map((stat, i) => (
-          <div key={i} style={styles.statCard}>
-            <span style={{ fontSize: 24 }}>{stat.icon}</span>
-            <span style={{ ...styles.statValue, color: stat.color }}>{stat.value}</span>
-            <span style={styles.statLabel}>{stat.label}</span>
+          <div key={i} style={styles.statCard} className="stat-card">
+            <span style={{ fontSize: 24 }} className="stat-icon">{stat.icon}</span>
+            <span style={{ ...styles.statValue, color: stat.color }} className="stat-value">{stat.value}</span>
+            <span style={styles.statLabel} className="stat-label">{stat.label}</span>
           </div>
         ))}
       </div>
 
       {/* Status Legend */}
-      <div style={styles.legendBar}>
+      <div style={styles.legendBar} className="legend-bar">
         <span style={styles.legendTitle}>מקרא סטטוס:</span>
         {[
           { color: '#10b981', label: 'שקט - לא זוהו דיבורים' },
@@ -125,7 +165,7 @@ export default function ClassroomMonitoringSystem() {
       </div>
 
       {/* Classrooms Grid */}
-      <div style={styles.classroomsGrid}>
+      <div style={styles.classroomsGrid} className="classrooms-grid">
         {classrooms.map(classroom => {
           const statusInfo = getStatusColor(classroom.status);
           return (
@@ -136,64 +176,66 @@ export default function ClassroomMonitoringSystem() {
                 borderColor: statusInfo.bg,
                 boxShadow: `0 4px 20px ${statusInfo.glow}`,
               }}
+              className="class-card"
               onClick={() => setSelectedClass(classroom)}
             >
-              {/* Status Indicator */}
-              <div style={{
-                ...styles.statusIndicator,
-                background: statusInfo.bg,
-                boxShadow: `0 0 20px ${statusInfo.glow}`,
-              }}>
-                <span style={styles.statusPulse} className={classroom.status !== 'green' ? 'pulse' : ''} />
+              {/* Top Row: Name + Status */}
+              <div style={styles.cardTopRow}>
+                <h3 style={styles.className} className="card-class-name">{classroom.name}</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {classroom.status === 'red' && (
+                    <span style={styles.alertTag} className="alert-tag">⚠️ נדרשת בדיקה</span>
+                  )}
+                  <div style={{
+                    ...styles.statusDot,
+                    background: statusInfo.bg,
+                    boxShadow: `0 0 12px ${statusInfo.glow}`,
+                  }} className="status-dot-wrap">
+                    <span className={classroom.status !== 'green' ? 'pulse' : ''} 
+                      style={{ width: '100%', height: '100%', borderRadius: '50%', background: 'inherit', display: 'block' }} />
+                  </div>
+                </div>
               </div>
 
-              {/* Class Info */}
-              <div style={styles.classHeader}>
-                <h3 style={styles.className}>{classroom.name}</h3>
-                <span style={{ ...styles.statusBadge, background: `${statusInfo.bg}30`, color: statusInfo.bg }}>
+              {/* Subject Row */}
+              <div style={styles.cardInfoRow} className="card-info-row">
+                <span style={styles.cardInfoItem}>📚 {classroom.subject}</span>
+              </div>
+
+              {/* Status Badge */}
+              <div style={styles.cardStatusRow} className="card-status-row">
+                <span style={{ 
+                  ...styles.statusBadge, 
+                  background: `${statusInfo.bg}20`, 
+                  color: statusInfo.bg,
+                }} className="card-status-badge">
                   {statusInfo.text}
                 </span>
+                <span style={styles.cardStudents} className="card-students">👥 {classroom.students} תלמידים</span>
               </div>
 
-              <div style={styles.classDetails}>
-                <div style={styles.detailRow}>
-                  <span style={styles.detailIcon}>📚</span>
-                  <span>{classroom.subject}</span>
-                </div>
-                <div style={styles.detailRow}>
-                  <span style={styles.detailIcon}>👨‍🏫</span>
-                  <span>{classroom.teacher}</span>
-                </div>
-                <div style={styles.detailRow}>
-                  <span style={styles.detailIcon}>🎓</span>
-                  <span>{classroom.grade}</span>
-                </div>
-                <div style={styles.detailRow}>
-                  <span style={styles.detailIcon}>👥</span>
-                  <span>{classroom.students} תלמידים</span>
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div style={styles.classStats}>
-                <div style={styles.classStat}>
-                  <span style={{ ...styles.classStatValue, color: classroom.talkingCount > 0 ? '#ef4444' : '#10b981' }}>
+              {/* Stats Row */}
+              <div style={styles.cardStatsRow} className="card-stats-row">
+                <div style={styles.cardStat}>
+                  <span style={{ ...styles.cardStatNum, color: classroom.talkingCount > 0 ? '#ef4444' : '#10b981' }} className="card-stat-num">
                     {classroom.talkingCount}
                   </span>
-                  <span style={styles.classStatLabel}>מדברים</span>
+                  <span style={styles.cardStatLabel} className="card-stat-label">מדברים</span>
                 </div>
-                <div style={styles.classStat}>
-                  <span style={{ ...styles.classStatValue, color: '#f59e0b' }}>{classroom.alerts}</span>
-                  <span style={styles.classStatLabel}>התראות</span>
+                <div style={styles.cardStatDivider} className="card-stat-divider" />
+                <div style={styles.cardStat}>
+                  <span style={{ ...styles.cardStatNum, color: '#f59e0b' }} className="card-stat-num">{classroom.alerts}</span>
+                  <span style={styles.cardStatLabel} className="card-stat-label">התראות</span>
                 </div>
-                <div style={styles.classStat}>
-                  <span style={styles.classStatValue}>{classroom.lastAlert || '-'}</span>
-                  <span style={styles.classStatLabel}>התראה אחרונה</span>
+                <div style={styles.cardStatDivider} className="card-stat-divider" />
+                <div style={styles.cardStat}>
+                  <span style={styles.cardStatNum} className="card-stat-num">{classroom.lastAlert || '—'}</span>
+                  <span style={styles.cardStatLabel} className="card-stat-label">אחרונה</span>
                 </div>
               </div>
 
               {/* View Button */}
-              <button style={styles.viewBtn}>
+              <button style={styles.viewBtn} className="view-btn">
                 <span>צפה בפרטים</span>
                 <span>←</span>
               </button>
@@ -208,6 +250,263 @@ export default function ClassroomMonitoringSystem() {
           50% { transform: scale(1.5); opacity: 0.5; }
         }
         .pulse { animation: pulse 2.5s infinite; }
+        
+        * { box-sizing: border-box; }
+        
+        /* ===== MOBILE (< 480px) ===== */
+        @media (max-width: 480px) {
+          .main-container {
+            padding: 8px !important;
+          }
+          .main-header {
+            flex-direction: column !important;
+            gap: 8px !important;
+            padding-bottom: 10px !important;
+            margin-bottom: 10px !important;
+          }
+          .header-left {
+            gap: 10px !important;
+          }
+          .logo-box {
+            width: 36px !important;
+            height: 36px !important;
+            font-size: 18px !important;
+            border-radius: 8px !important;
+          }
+          .logo-title {
+            font-size: 16px !important;
+          }
+          .logo-sub {
+            font-size: 8px !important;
+          }
+          .clock-box {
+            padding: 6px 10px !important;
+            width: 100% !important;
+            text-align: center !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 12px !important;
+          }
+          .clock-time {
+            font-size: 16px !important;
+          }
+          .clock-date {
+            font-size: 9px !important;
+          }
+          .stats-bar {
+            display: grid !important;
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 6px !important;
+            margin-bottom: 8px !important;
+          }
+          .stat-card {
+            padding: 8px 4px !important;
+            border-radius: 8px !important;
+            gap: 2px !important;
+          }
+          .stat-icon {
+            font-size: 14px !important;
+          }
+          .stat-value {
+            font-size: 16px !important;
+          }
+          .stat-label {
+            font-size: 7px !important;
+          }
+          .legend-bar {
+            display: none !important;
+          }
+          .classrooms-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+          }
+          .class-card {
+            padding: 10px !important;
+            border-radius: 10px !important;
+            gap: 6px !important;
+            border-width: 1.5px !important;
+          }
+          .card-class-name {
+            font-size: 13px !important;
+          }
+          .card-info-row {
+            font-size: 10px !important;
+          }
+          .card-status-row {
+            flex-wrap: wrap !important;
+            gap: 4px !important;
+          }
+          .card-status-badge {
+            font-size: 9px !important;
+            padding: 2px 8px !important;
+          }
+          .card-students {
+            font-size: 9px !important;
+          }
+          .card-stats-row {
+            padding: 6px 0 !important;
+          }
+          .card-stat-num {
+            font-size: 14px !important;
+          }
+          .card-stat-label {
+            font-size: 7px !important;
+          }
+          .card-stat-divider {
+            height: 20px !important;
+          }
+          .view-btn {
+            padding: 8px 10px !important;
+            font-size: 10px !important;
+            border-radius: 8px !important;
+          }
+          .alert-tag {
+            font-size: 7px !important;
+            padding: 2px 4px !important;
+          }
+          .status-dot-wrap {
+            width: 10px !important;
+            height: 10px !important;
+          }
+        }
+        
+        /* ===== LARGE PHONES (481-600px) ===== */
+        @media (min-width: 481px) and (max-width: 600px) {
+          .main-container {
+            padding: 10px !important;
+          }
+          .main-header {
+            flex-direction: column !important;
+            gap: 10px !important;
+          }
+          .logo-title {
+            font-size: 20px !important;
+          }
+          .stats-bar {
+            display: grid !important;
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 8px !important;
+          }
+          .stat-card {
+            padding: 10px 6px !important;
+          }
+          .stat-value {
+            font-size: 18px !important;
+          }
+          .stat-label {
+            font-size: 8px !important;
+          }
+          .legend-bar {
+            display: none !important;
+          }
+          .classrooms-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 10px !important;
+          }
+          .class-card {
+            padding: 12px !important;
+            gap: 8px !important;
+          }
+          .card-class-name {
+            font-size: 15px !important;
+          }
+          .view-btn {
+            padding: 9px 12px !important;
+            font-size: 11px !important;
+          }
+        }
+        
+        /* ===== TABLETS (601-900px) ===== */
+        @media (min-width: 601px) and (max-width: 900px) {
+          .main-container {
+            padding: 16px !important;
+          }
+          .stats-bar {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 10px !important;
+          }
+          .stat-card {
+            min-width: calc(33% - 10px) !important;
+            flex: 1 1 calc(33% - 10px) !important;
+          }
+          .legend-bar {
+            flex-wrap: wrap !important;
+            gap: 12px !important;
+          }
+          .classrooms-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 14px !important;
+          }
+        }
+        
+        /* ===== SMALL DESKTOP (901-1200px) ===== */
+        @media (min-width: 901px) and (max-width: 1200px) {
+          .classrooms-grid {
+            grid-template-columns: repeat(3, 1fr) !important;
+          }
+        }
+        
+        /* ===== LARGE DESKTOP (1200+) ===== */
+        @media (min-width: 1201px) {
+          .classrooms-grid {
+            grid-template-columns: repeat(4, 1fr) !important;
+          }
+        }
+
+        /* ===== DETAIL PAGE MOBILE ===== */
+        @media (max-width: 768px) {
+          .detail-container {
+            flex-direction: column !important;
+            overflow-x: hidden !important;
+          }
+          .detail-sidebar {
+            width: 100% !important;
+            min-width: 0 !important;
+            flex-shrink: 0 !important;
+            border-left: none !important;
+            border-bottom: 1px solid rgba(99,102,241,0.15) !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 14px !important;
+          }
+          .detail-main {
+            padding: 10px !important;
+            min-width: 0 !important;
+            overflow-x: hidden !important;
+          }
+          .detail-header {
+            flex-direction: column !important;
+            gap: 8px !important;
+          }
+          .detail-page-title {
+            font-size: 14px !important;
+          }
+          .detail-canvas-box {
+            padding: 6px !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
+          }
+          .detail-canvas-box canvas {
+            max-width: 100% !important;
+            height: auto !important;
+          }
+          .detail-bottom-bar {
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+          }
+          .detail-bottom-bar > div {
+            min-width: calc(50% - 6px) !important;
+            font-size: 9px !important;
+            padding: 8px !important;
+          }
+          .camera-info {
+            flex-direction: column !important;
+            gap: 4px !important;
+            font-size: 9px !important;
+          }
+        }
       `}</style>
     </div>
   );
@@ -948,9 +1247,9 @@ function ClassroomDetail({ classroom, onBack }) {
   const formatTime = d => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
-    <div style={detailStyles.container}>
+    <div style={detailStyles.container} className="detail-container">
       {/* Sidebar */}
-      <div style={detailStyles.sidebar}>
+      <div style={detailStyles.sidebar} className="detail-sidebar">
         <button onClick={onBack} style={detailStyles.backBtn}>
           <span>→</span>
           <span>חזרה לדשבורד</span>
@@ -1054,9 +1353,9 @@ function ClassroomDetail({ classroom, onBack }) {
       </div>
 
       {/* Main View */}
-      <div style={detailStyles.main}>
-        <div style={detailStyles.header}>
-          <h1 style={detailStyles.pageTitle}>📹 צפייה חיה בכיתה - {classroom.name}</h1>
+      <div style={detailStyles.main} className="detail-main">
+        <div style={detailStyles.header} className="detail-header">
+          <h1 style={detailStyles.pageTitle} className="detail-page-title">📹 צפייה חיה בכיתה - {classroom.name}</h1>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <div style={detailStyles.liveBadge}>
               <span style={detailStyles.liveDot} />
@@ -1081,7 +1380,7 @@ function ClassroomDetail({ classroom, onBack }) {
               height={270} 
               style={detailStyles.cameraCanvas}
             />
-            <div style={detailStyles.cameraInfo}>
+            <div style={detailStyles.cameraInfo} className="camera-info">
               <span>🔒 הקלטה ברזולוציה נמוכה לשמירה על פרטיות</span>
               <span>📊 160x90 פיקסלים</span>
               <span>🛡️ תואם GDPR ותקנות הפרטיות</span>
@@ -1089,11 +1388,11 @@ function ClassroomDetail({ classroom, onBack }) {
           </div>
         )}
 
-        <div style={detailStyles.canvasBox}>
+        <div style={detailStyles.canvasBox} className="detail-canvas-box">
           <canvas ref={canvasRef} width={classroomLayout.width} height={classroomLayout.height} style={detailStyles.canvas} />
         </div>
 
-        <div style={detailStyles.bottomBar}>
+        <div style={detailStyles.bottomBar} className="detail-bottom-bar">
           <div style={detailStyles.bottomStat}>
             <span>📹</span>
             <span>מצלמה: פעילה</span>
@@ -1112,6 +1411,32 @@ function ClassroomDetail({ classroom, onBack }) {
           </div>
         </div>
       </div>
+      
+      <style>{`
+        @media (max-width: 768px) {
+          .detail-container {
+            flex-direction: column !important;
+            overflow-x: hidden !important;
+          }
+          .detail-sidebar {
+            width: 100% !important;
+            max-height: none !important;
+            border-left: none !important;
+            padding: 14px !important;
+          }
+          .detail-main {
+            width: 100% !important;
+            padding: 10px !important;
+          }
+          .detail-canvas-box canvas {
+            max-width: 100% !important;
+            height: auto !important;
+          }
+          .detail-bottom-bar {
+            flex-wrap: wrap !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -1123,7 +1448,7 @@ const styles = {
     background: 'linear-gradient(135deg, #070b14 0%, #0f172a 50%, #070b14 100%)',
     fontFamily: "'Inter', system-ui, sans-serif",
     color: '#fff',
-    padding: 24,
+    padding: 'clamp(12px, 3vw, 24px)',
     direction: 'rtl',
   },
   header: {
@@ -1140,18 +1465,18 @@ const styles = {
     gap: 16,
   },
   logoBox: {
-    width: 60,
-    height: 60,
+    width: 'clamp(45px, 6vw, 60px)',
+    height: 'clamp(45px, 6vw, 60px)',
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     borderRadius: 16,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 30,
+    fontSize: 'clamp(20px, 3vw, 30px)',
     boxShadow: '0 8px 32px rgba(99,102,241,0.4)',
   },
   logoTitle: {
-    fontSize: 28,
+    fontSize: 'clamp(18px, 3vw, 28px)',
     fontWeight: 800,
     margin: 0,
     background: 'linear-gradient(90deg, #fff, #a5b4fc)',
@@ -1200,7 +1525,7 @@ const styles = {
     gap: 8,
   },
   statValue: {
-    fontSize: 32,
+    fontSize: 'clamp(20px, 3vw, 32px)',
     fontWeight: 800,
     fontFamily: 'monospace',
   },
@@ -1236,89 +1561,106 @@ const styles = {
   },
   classroomsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-    gap: 20,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',
+    gap: 'clamp(12px, 2vw, 20px)',
   },
   classCard: {
     background: 'linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.8))',
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: 16,
+    padding: '18px 20px',
     border: '2px solid',
     cursor: 'pointer',
     transition: 'all 0.3s ease',
     position: 'relative',
     overflow: 'hidden',
-  },
-  statusIndicator: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    width: 16,
-    height: 16,
-    borderRadius: '50%',
     display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  cardTopRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusPulse: {
-    width: 16,
-    height: 16,
-    borderRadius: '50%',
-    background: 'inherit',
-  },
-  classHeader: {
-    marginBottom: 16,
   },
   className: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 700,
-    margin: '0 0 8px 0',
+    margin: 0,
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  alertTag: {
+    padding: '3px 7px',
+    background: 'rgba(239,68,68,0.2)',
+    border: '1px solid rgba(239,68,68,0.5)',
+    borderRadius: 6,
+    fontSize: 9,
+    fontWeight: 600,
+    color: '#ef4444',
+    whiteSpace: 'nowrap',
+  },
+  cardInfoRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  cardInfoItem: {
+    whiteSpace: 'nowrap',
+  },
+  cardInfoDivider: {
+    color: 'rgba(99,102,241,0.3)',
+    fontSize: 10,
+  },
+  cardStatusRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   statusBadge: {
     padding: '4px 12px',
     borderRadius: 20,
-    fontSize: 11,
-    fontWeight: 600,
+    fontSize: 12,
+    fontWeight: 700,
   },
-  classDetails: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottom: '1px solid rgba(99,102,241,0.1)',
+  cardStudents: {
+    fontSize: 12,
+    color: '#64748b',
   },
-  detailRow: {
+  cardStatsRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
-    fontSize: 13,
-    color: '#94a3b8',
+    padding: '10px 0',
+    borderTop: '1px solid rgba(99,102,241,0.1)',
+    borderBottom: '1px solid rgba(99,102,241,0.1)',
   },
-  detailIcon: {
-    fontSize: 14,
-  },
-  classStats: {
-    display: 'flex',
-    gap: 16,
-    marginBottom: 16,
-  },
-  classStat: {
+  cardStat: {
     flex: 1,
     textAlign: 'center',
-    padding: 12,
-    background: 'rgba(15,23,42,0.5)',
-    borderRadius: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
   },
-  classStatValue: {
-    display: 'block',
-    fontSize: 20,
+  cardStatNum: {
+    fontSize: 18,
     fontWeight: 700,
     fontFamily: 'monospace',
+    color: '#e2e8f0',
   },
-  classStatLabel: {
-    fontSize: 10,
+  cardStatLabel: {
+    fontSize: 9,
     color: '#64748b',
+    fontWeight: 500,
+  },
+  cardStatDivider: {
+    width: 1,
+    height: 28,
+    background: 'rgba(99,102,241,0.15)',
   },
   viewBtn: {
     width: '100%',
@@ -1342,19 +1684,26 @@ const detailStyles = {
   container: {
     display: 'flex',
     minHeight: '100vh',
+    width: '100%',
+    maxWidth: '100vw',
     background: 'linear-gradient(135deg, #070b14 0%, #0f172a 50%, #070b14 100%)',
     fontFamily: "'Inter', system-ui, sans-serif",
     color: '#fff',
     direction: 'rtl',
+    overflowX: 'hidden',
   },
   sidebar: {
-    width: 340,
+    width: 'min(340px, 100vw)',
+    flexShrink: 0,
     background: 'linear-gradient(180deg, rgba(15,23,42,0.98), rgba(7,11,20,0.98))',
-    borderRight: '1px solid rgba(99,102,241,0.15)',
-    padding: 20,
+    borderLeft: '1px solid rgba(99,102,241,0.15)',
+    padding: 'clamp(12px, 3vw, 20px)',
     display: 'flex',
     flexDirection: 'column',
     gap: 16,
+    overflowY: 'auto',
+    maxHeight: '100vh',
+    boxSizing: 'border-box',
   },
   backBtn: {
     display: 'flex',
@@ -1374,7 +1723,7 @@ const detailStyles = {
     borderBottom: '1px solid rgba(99,102,241,0.15)',
   },
   classTitle: {
-    fontSize: 24,
+    fontSize: 'clamp(18px, 2.5vw, 24px)',
     fontWeight: 700,
     margin: '0 0 12px 0',
   },
@@ -1497,10 +1846,12 @@ const detailStyles = {
   },
   main: {
     flex: 1,
-    padding: 20,
+    padding: 'clamp(10px, 2vw, 20px)',
     display: 'flex',
     flexDirection: 'column',
     gap: 16,
+    minWidth: 0,
+    overflowX: 'hidden',
   },
   header: {
     display: 'flex',
@@ -1508,7 +1859,7 @@ const detailStyles = {
     alignItems: 'center',
   },
   pageTitle: {
-    fontSize: 22,
+    fontSize: 'clamp(16px, 2.5vw, 22px)',
     fontWeight: 700,
     margin: 0,
     background: 'linear-gradient(90deg, #fff, #c7d2fe)',
@@ -1543,27 +1894,32 @@ const detailStyles = {
     background: 'linear-gradient(135deg, rgba(15,23,42,0.8), rgba(7,11,20,0.9))',
     borderRadius: 20,
     border: '1px solid rgba(99,102,241,0.1)',
-    padding: 16,
+    padding: 'clamp(8px, 2vw, 16px)',
     boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+    overflow: 'auto',
   },
   canvas: {
     borderRadius: 14,
     boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+    maxWidth: '100%',
+    height: 'auto',
   },
   bottomBar: {
     display: 'flex',
-    gap: 16,
+    gap: 'clamp(8px, 1.5vw, 16px)',
+    flexWrap: 'wrap',
   },
   bottomStat: {
-    flex: 1,
+    flex: '1 1 auto',
+    minWidth: '120px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    padding: 14,
+    padding: 'clamp(10px, 1.5vw, 14px)',
     background: 'rgba(30,41,59,0.6)',
     borderRadius: 12,
-    fontSize: 12,
+    fontSize: 'clamp(10px, 1.2vw, 12px)',
     color: '#94a3b8',
   },
   cameraFeedContainer: {

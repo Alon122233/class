@@ -1287,6 +1287,61 @@ function LoginScreen({ onLogin }) {
 // ─── VIDEO PREVIEW OVERLAY ────────────────────────────────────────
 function VideoPreviewOverlay({ videoSrc, onClose }) {
   const [videoError, setVideoError] = useState(false);
+  const videoRef = useRef(null);
+  const userPausedRef = useRef(false);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    userPausedRef.current = false;
+
+    const tryPlay = () => {
+      const p = v.play();
+      if (p) p.catch(() => {
+        v.muted = true;
+        v.play().catch(() => {});
+      });
+    };
+
+    // Resume if browser auto-pauses (not user-initiated)
+    const onPause = () => {
+      if (userPausedRef.current) return;
+      setTimeout(() => {
+        if (v && v.paused && !v.ended && !userPausedRef.current) tryPlay();
+      }, 150);
+    };
+
+    const onStalled = () => {
+      setTimeout(() => {
+        if (v && v.paused && !userPausedRef.current) tryPlay();
+      }, 300);
+    };
+
+    const onEnded = () => {
+      v.currentTime = 0;
+      tryPlay();
+    };
+
+    // Detect user clicking pause via controls
+    const onPointerDown = () => { userPausedRef.current = true; };
+    const onPlay = () => { userPausedRef.current = false; };
+
+    v.addEventListener('pause', onPause);
+    v.addEventListener('stalled', onStalled);
+    v.addEventListener('ended', onEnded);
+    v.addEventListener('pointerdown', onPointerDown);
+    v.addEventListener('play', onPlay);
+
+    tryPlay();
+
+    return () => {
+      v.removeEventListener('pause', onPause);
+      v.removeEventListener('stalled', onStalled);
+      v.removeEventListener('ended', onEnded);
+      v.removeEventListener('pointerdown', onPointerDown);
+      v.removeEventListener('play', onPlay);
+    };
+  }, [videoSrc]);
 
   return (
     <div style={{
@@ -1352,7 +1407,7 @@ function VideoPreviewOverlay({ videoSrc, onClose }) {
               </div>
             </div>
           ) : (
-            <video src={videoSrc} controls autoPlay loop onError={() => setVideoError(true)}
+            <video ref={videoRef} src={videoSrc} controls autoPlay loop playsInline onError={() => setVideoError(true)}
               style={{ display: 'block', width: '100%', maxHeight: '72vh', objectFit: 'contain', background: '#000' }} />
           )}
           {/* Corner brackets */}

@@ -51,27 +51,46 @@ function generateSeatMap(classroom) {
 
 // ─── SEAT EDITOR (inline for one class) ────────────────────────
 function SeatEditor({ seatMap, onUpdate, className, onClose }) {
-  const [dragStudent, setDragStudent] = useState(null);
-  const [dragOverSeat, setDragOverSeat] = useState(null);
+  const [selectedSeat, setSelectedSeat] = useState(null); // tap-to-swap: selected seat index
+  const [dragOverSeat, setDragOverSeat] = useState(null); // desktop drag highlight
+  const isDraggingRef = useRef(false); // track if a real drag happened
 
-  const handleDrop = (targetIndex) => {
-    if (dragStudent === null || dragStudent === targetIndex) { setDragStudent(null); setDragOverSeat(null); return; }
+  const handleSwap = (targetIndex) => {
+    if (selectedSeat === null || selectedSeat === targetIndex) { setSelectedSeat(null); setDragOverSeat(null); return; }
     const next = [...seatMap];
     const temp = next[targetIndex].student;
-    next[targetIndex] = { ...next[targetIndex], student: next[dragStudent].student };
-    next[dragStudent] = { ...next[dragStudent], student: temp };
+    next[targetIndex] = { ...next[targetIndex], student: next[selectedSeat].student };
+    next[selectedSeat] = { ...next[selectedSeat], student: temp };
     onUpdate(next);
-    setDragStudent(null);
+    setSelectedSeat(null);
     setDragOverSeat(null);
+  };
+
+  // Click/tap handler — works on both desktop & mobile
+  const handleSeatTap = (idx, seat) => {
+    // If a drag just happened, skip the click
+    if (isDraggingRef.current) { isDraggingRef.current = false; return; }
+    if (selectedSeat === null) {
+      // Nothing selected yet — select this seat if it has a student
+      if (seat?.student) setSelectedSeat(idx);
+    } else if (selectedSeat === idx) {
+      // Tapped same seat — deselect
+      setSelectedSeat(null);
+    } else {
+      // Second tap — swap
+      handleSwap(idx);
+    }
   };
 
   const handleReshuffle = () => {
     const students = seatMap.filter(s => s.student).map(s => s.student).sort(() => Math.random() - 0.5);
     let idx = 0;
     onUpdate(seatMap.map(seat => ({ ...seat, student: idx < students.length ? students[idx++] : null })));
+    setSelectedSeat(null);
   };
 
   const occupiedCount = seatMap.filter(s => s.student).length;
+  const selectedStudent = selectedSeat !== null ? seatMap[selectedSeat]?.student : null;
 
   return (
     <div style={{
@@ -90,7 +109,7 @@ function SeatEditor({ seatMap, onUpdate, className, onClose }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 'clamp(14px, 3.5vw, 18px)', fontWeight: 700 }}>🪑 עריכת מושבים — {className}</div>
-            <div style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: '#64748b', marginTop: 2 }}>{occupiedCount} תלמידים • גרור כדי להחליף מקומות</div>
+            <div style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: '#64748b', marginTop: 2 }}>{occupiedCount} תלמידים • לחץ על תלמיד ואז על מקום יעד להחלפה</div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
             <button onClick={handleReshuffle} style={{
@@ -105,6 +124,31 @@ function SeatEditor({ seatMap, onUpdate, className, onClose }) {
             }}>✕</button>
           </div>
         </div>
+
+        {/* Selected student banner */}
+        {selectedStudent && (
+          <div style={{
+            margin: '0 0 10px', padding: '8px 14px', borderRadius: 8,
+            background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            animation: 'fadeIn 0.2s ease',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 'clamp(14px, 3vw, 18px)' }}>{selectedStudent.gender === 'boy' ? '👦' : '👧'}</span>
+              <span style={{ fontSize: 'clamp(11px, 2.5vw, 13px)', fontWeight: 700, color: '#38bdf8' }}>
+                {selectedStudent.name}
+              </span>
+              <span style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: '#64748b' }}>
+                — לחץ על מקום יעד להחלפה
+              </span>
+            </div>
+            <button onClick={() => setSelectedSeat(null)} style={{
+              padding: '4px 10px', borderRadius: 6, fontSize: 'clamp(9px, 2vw, 11px)',
+              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+              color: '#f87171', cursor: 'pointer', fontWeight: 600, flexShrink: 0,
+            }}>✕ ביטול</button>
+          </div>
+        )}
 
         {/* Whiteboard */}
         <div style={{
@@ -122,43 +166,58 @@ function SeatEditor({ seatMap, onUpdate, className, onClose }) {
                   const li = seatMap.findIndex(s => s.row === row && s.col === col && s.side === 0);
                   const ri = seatMap.findIndex(s => s.row === row && s.col === col && s.side === 1);
                   const left = seatMap[li]; const right = seatMap[ri];
-                  const renderSeat = (seat, idx) => (
-                    <div
-                      draggable={!!seat?.student}
-                      onDragStart={() => setDragStudent(idx)}
-                      onDragOver={e => { e.preventDefault(); setDragOverSeat(idx); }}
-                      onDrop={() => handleDrop(idx)}
-                      onTouchStart={() => setDragStudent(idx)}
-                      onTouchEnd={() => { if (dragStudent !== null && dragOverSeat !== null) handleDrop(dragOverSeat); }}
-                      onClick={() => {
-                        if (dragStudent === null && seat?.student) { setDragStudent(idx); }
-                        else if (dragStudent !== null && dragStudent !== idx) { handleDrop(idx); }
-                        else { setDragStudent(null); setDragOverSeat(null); }
-                      }}
-                      style={{
-                        flex: 1, padding: 'clamp(3px, 0.8vw, 5px) 2px', textAlign: 'center',
-                        cursor: seat?.student ? 'grab' : 'default',
-                        background: dragOverSeat === idx ? 'rgba(99,102,241,0.15)' :
-                          dragStudent === idx ? 'rgba(56,189,248,0.12)' :
-                          seat?.student ? 'rgba(16,185,129,0.04)' : 'transparent',
-                        transition: 'background 0.15s',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
-                        minHeight: 'clamp(34px, 7vw, 44px)',
-                        border: dragStudent === idx ? '1px solid rgba(56,189,248,0.4)' : '1px solid transparent',
-                        borderRadius: 4,
-                      }}
-                    >
-                      {seat?.student ? (<>
-                        <div style={{
-                          width: 'clamp(16px, 4vw, 22px)', height: 'clamp(16px, 4vw, 22px)', borderRadius: 4,
-                          background: seat.student.gender === 'boy' ? 'rgba(56,189,248,0.15)' : 'rgba(236,72,153,0.15)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 'clamp(8px, 1.8vw, 10px)', color: seat.student.gender === 'boy' ? '#38bdf8' : '#f472b6',
-                        }}>{seat.student.gender === 'boy' ? '👦' : '👧'}</div>
-                        <div style={{ fontSize: 'clamp(5px, 1.5vw, 7px)', fontWeight: 600, color: '#cbd5e1', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seat.student.name}</div>
-                      </>) : <div style={{ fontSize: 'clamp(6px, 1.4vw, 8px)', color: '#334155' }}>ריק</div>}
-                    </div>
-                  );
+                  const renderSeat = (seat, idx) => {
+                    const isSelected = selectedSeat === idx;
+                    const isTarget = selectedSeat !== null && selectedSeat !== idx;
+                    return (
+                      <div
+                        draggable={!!seat?.student}
+                        onDragStart={() => { isDraggingRef.current = true; setSelectedSeat(idx); }}
+                        onDragOver={e => { e.preventDefault(); setDragOverSeat(idx); }}
+                        onDrop={() => { isDraggingRef.current = true; handleSwap(idx); }}
+                        onDragEnd={() => { setTimeout(() => { isDraggingRef.current = false; }, 50); }}
+                        onClick={() => handleSeatTap(idx, seat)}
+                        style={{
+                          flex: 1, padding: 'clamp(3px, 0.8vw, 5px) 2px', textAlign: 'center',
+                          cursor: isSelected ? 'pointer' : isTarget ? 'crosshair' : seat?.student ? 'pointer' : 'default',
+                          background: isSelected ? 'rgba(56,189,248,0.18)' :
+                            dragOverSeat === idx ? 'rgba(99,102,241,0.15)' :
+                            (isTarget && seat?.student) ? 'rgba(139,92,246,0.08)' :
+                            seat?.student ? 'rgba(16,185,129,0.04)' : 'transparent',
+                          transition: 'all 0.15s',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1,
+                          minHeight: 'clamp(34px, 7vw, 44px)',
+                          border: isSelected ? '2px solid rgba(56,189,248,0.6)' :
+                            isTarget ? '1px dashed rgba(139,92,246,0.3)' : '1px solid transparent',
+                          borderRadius: 4,
+                          boxShadow: isSelected ? '0 0 12px rgba(56,189,248,0.2)' : 'none',
+                        }}
+                      >
+                        {seat?.student ? (<>
+                          <div style={{
+                            width: 'clamp(16px, 4vw, 22px)', height: 'clamp(16px, 4vw, 22px)', borderRadius: 4,
+                            background: isSelected ? 'rgba(56,189,248,0.3)' :
+                              seat.student.gender === 'boy' ? 'rgba(56,189,248,0.15)' : 'rgba(236,72,153,0.15)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 'clamp(8px, 1.8vw, 10px)',
+                            color: isSelected ? '#fff' : seat.student.gender === 'boy' ? '#38bdf8' : '#f472b6',
+                            transform: isSelected ? 'scale(1.15)' : 'scale(1)',
+                            transition: 'transform 0.15s',
+                          }}>{seat.student.gender === 'boy' ? '👦' : '👧'}</div>
+                          <div style={{
+                            fontSize: 'clamp(5px, 1.5vw, 7px)', fontWeight: isSelected ? 800 : 600,
+                            color: isSelected ? '#38bdf8' : '#cbd5e1',
+                            maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>{seat.student.name}</div>
+                        </>) : (
+                          <div style={{
+                            fontSize: 'clamp(6px, 1.4vw, 8px)',
+                            color: isTarget ? '#8b5cf6' : '#334155',
+                          }}>{isTarget ? '⬇ הנח כאן' : 'ריק'}</div>
+                        )}
+                      </div>
+                    );
+                  };
                   return (
                     <div key={col} style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(99,102,241,0.08)', background: 'rgba(15,23,42,0.5)' }}>
                       <div style={{ display: 'flex' }}>
@@ -179,15 +238,24 @@ function SeatEditor({ seatMap, onUpdate, className, onClose }) {
         <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 8, fontSize: 'clamp(7px, 1.8vw, 9px)', color: '#475569', flexWrap: 'wrap' }}>
           <span>👦 בן</span><span>👧 בת</span>
           <span style={{ color: '#38bdf8' }}>■ נבחר</span>
-          <span style={{ color: '#a5b4fc' }}>■ יעד</span>
-          <span style={{ color: '#94a3b8' }}>💡 בטלפון: לחץ לבחור → לחץ יעד</span>
+          <span style={{ color: '#8b5cf6' }}>⬜ יעד</span>
         </div>
+
+        <style>{`
+          @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        `}</style>
       </div>
     </div>
   );
 }
 
 // ─── TEACHER CONTROL PAGE ───────────────────────────────────────
+const SUBJECT_OPTIONS = [
+  'מתמטיקה', 'פיזיקה', 'כימיה', 'ביולוגיה', 'אנגלית',
+  'היסטוריה', 'ספרות', 'תנ"ך', 'אזרחות', 'גיאוגרפיה',
+  'מדעי המחשב', 'ערבית', 'צרפתית', 'לשון', 'חינוך גופני',
+];
+
 function TeacherControl({ classrooms, onBack, onCreateEvent }) {
   const [allSeatMaps, setAllSeatMaps] = useState(() => {
     const maps = {};
@@ -195,22 +263,57 @@ function TeacherControl({ classrooms, onBack, onCreateEvent }) {
     return maps;
   });
   const [editingClassId, setEditingClassId] = useState(null);
+  const [classSubjects, setClassSubjects] = useState(() => {
+    const subs = {};
+    classrooms.forEach(cls => { subs[cls.id] = cls.subject; });
+    return subs;
+  });
+  const [openDropdownId, setOpenDropdownId] = useState(null);
+  const [includedClassIds, setIncludedClassIds] = useState(() => classrooms.map(c => c.id));
+  const [classOverrides, setClassOverrides] = useState({});
+  const [editingDetailsId, setEditingDetailsId] = useState(null);
 
   const handleUpdateSeats = (classId, newMap) => {
     setAllSeatMaps(prev => ({ ...prev, [classId]: newMap }));
   };
 
+  const removeClassFromEvent = (classId) => {
+    setIncludedClassIds(prev => prev.filter(id => id !== classId));
+  };
+
+  const restoreClass = (classId) => {
+    setIncludedClassIds(prev => [...prev, classId]);
+  };
+
+  const getClassDisplay = (cls) => {
+    const overrides = classOverrides[cls.id] || {};
+    return {
+      name: overrides.name ?? cls.name,
+      teacher: overrides.teacher ?? cls.teacher,
+    };
+  };
+
   const handleCreate = () => {
+    const included = classrooms.filter(c => includedClassIds.includes(c.id));
+    if (included.length === 0) return;
     onCreateEvent({
       seatMaps: allSeatMaps,
-      classrooms: classrooms.map(c => ({
-        id: c.id, name: c.name, teacher: c.teacher, subject: c.subject, grade: c.grade,
-        studentCount: allSeatMaps[c.id].filter(s => s.student).length,
-      })),
+      classrooms: included.map(c => {
+        const display = getClassDisplay(c);
+        return {
+          id: c.id, name: display.name, teacher: display.teacher,
+          examSubject: classSubjects[c.id] || c.subject,
+          subject: c.subject, grade: c.grade,
+          studentCount: allSeatMaps[c.id].filter(s => s.student).length,
+        };
+      }),
     });
   };
 
+  const includedClasses = classrooms.filter(c => includedClassIds.includes(c.id));
+  const removedClasses = classrooms.filter(c => !includedClassIds.includes(c.id));
   const editingClass = classrooms.find(c => c.id === editingClassId);
+  const editingDisplay = editingClass ? getClassDisplay(editingClass) : null;
 
   return (
     <div style={{
@@ -224,7 +327,7 @@ function TeacherControl({ classrooms, onBack, onCreateEvent }) {
         <SeatEditor
           seatMap={allSeatMaps[editingClassId]}
           onUpdate={(newMap) => handleUpdateSeats(editingClassId, newMap)}
-          className={editingClass?.name || ''}
+          className={editingDisplay?.name || ''}
           onClose={() => setEditingClassId(null)}
         />
       )}
@@ -260,16 +363,33 @@ function TeacherControl({ classrooms, onBack, onCreateEvent }) {
 
       {/* All classes grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: 'clamp(10px, 2vw, 16px)', marginBottom: 'clamp(16px, 3vw, 24px)' }}>
-        {classrooms.map(cls => {
+        {includedClasses.map(cls => {
           const seats = allSeatMaps[cls.id] || [];
           const occupied = seats.filter(s => s.student).length;
+          const currentSubject = classSubjects[cls.id] || cls.subject;
+          const isDropdownOpen = openDropdownId === cls.id;
+          const display = getClassDisplay(cls);
+          const isEditingDetails = editingDetailsId === cls.id;
           return (
             <div key={cls.id} style={{
               padding: 'clamp(12px, 2.5vw, 18px)', borderRadius: 'clamp(12px, 2vw, 16px)',
               background: 'linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.5))',
               border: '1px solid rgba(99,102,241,0.1)',
-              transition: 'all 0.3s',
+              transition: 'all 0.3s', position: 'relative',
             }}>
+              {/* Remove button */}
+              <button onClick={() => removeClassFromEvent(cls.id)} title="הסר כיתה" style={{
+                position: 'absolute', top: 4, left: 4, zIndex: 10,
+                width: 18, height: 18, borderRadius: '50%', padding: 0,
+                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+                color: '#f87171', fontSize: 10, lineHeight: '16px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.35)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; }}
+              >✕</button>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2vw, 12px)', marginBottom: 'clamp(10px, 2vw, 14px)' }}>
                 <div style={{
                   width: 'clamp(32px, 7vw, 40px)', height: 'clamp(32px, 7vw, 40px)', borderRadius: 'clamp(8px, 1.5vw, 10px)', flexShrink: 0,
@@ -277,14 +397,94 @@ function TeacherControl({ classrooms, onBack, onCreateEvent }) {
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'clamp(14px, 3vw, 18px)',
                 }}>🏫</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 'clamp(13px, 3vw, 15px)', fontWeight: 700 }}>{cls.name}</div>
-                  <div style={{ fontSize: 'clamp(9px, 2vw, 10px)', color: '#64748b' }}>{cls.teacher} • {cls.subject}</div>
+                  <div style={{ fontSize: 'clamp(13px, 3vw, 15px)', fontWeight: 700 }}>{display.name}</div>
+                  <div style={{ fontSize: 'clamp(9px, 2vw, 10px)', color: '#64748b' }}>{display.teacher} • {cls.grade}</div>
                 </div>
                 <div style={{
                   padding: '3px 8px', borderRadius: 6, fontSize: 'clamp(8px, 1.8vw, 10px)', fontWeight: 700, flexShrink: 0,
                   background: 'rgba(16,185,129,0.08)', color: '#10b981',
                   border: '1px solid rgba(16,185,129,0.15)',
                 }}>✓ מוכן</div>
+              </div>
+
+              {/* Edit class details inline */}
+              {isEditingDetails && (
+                <div style={{
+                  marginBottom: 10, padding: 10, borderRadius: 10,
+                  background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ fontSize: 'clamp(9px, 1.8vw, 10px)', color: '#94a3b8' }}>שם כיתה</label>
+                    <input
+                      value={display.name}
+                      onChange={e => setClassOverrides(prev => ({
+                        ...prev, [cls.id]: { ...prev[cls.id], name: e.target.value }
+                      }))}
+                      style={{
+                        padding: '6px 10px', borderRadius: 6,
+                        background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(99,102,241,0.2)',
+                        color: '#e2e8f0', fontSize: 'clamp(11px, 2.2vw, 13px)', direction: 'rtl',
+                        outline: 'none',
+                      }}
+                    />
+                    <label style={{ fontSize: 'clamp(9px, 1.8vw, 10px)', color: '#94a3b8', marginTop: 2 }}>שם מורה</label>
+                    <input
+                      value={display.teacher}
+                      onChange={e => setClassOverrides(prev => ({
+                        ...prev, [cls.id]: { ...prev[cls.id], teacher: e.target.value }
+                      }))}
+                      style={{
+                        padding: '6px 10px', borderRadius: 6,
+                        background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(99,102,241,0.2)',
+                        color: '#e2e8f0', fontSize: 'clamp(11px, 2.2vw, 13px)', direction: 'rtl',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+                  <button onClick={() => setEditingDetailsId(null)} style={{
+                    marginTop: 8, padding: '5px 14px', borderRadius: 6,
+                    background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)',
+                    color: '#10b981', fontSize: 'clamp(9px, 1.8vw, 11px)', fontWeight: 600, cursor: 'pointer',
+                  }}>✓ סיום עריכה</button>
+                </div>
+              )}
+
+              {/* Per-class subject selector */}
+              <div style={{ marginBottom: 10, position: 'relative' }}>
+                <button onClick={() => setOpenDropdownId(isDropdownOpen ? null : cls.id)} style={{
+                  width: '100%', padding: 'clamp(6px, 1.2vw, 8px) clamp(10px, 2vw, 12px)',
+                  borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
+                  color: '#fbbf24', fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 600, cursor: 'pointer',
+                }}>
+                  <span>📚 {currentSubject}</span>
+                  <span style={{ fontSize: 10 }}>{isDropdownOpen ? '▲' : '▼'}</span>
+                </button>
+                {isDropdownOpen && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                    marginTop: 4, padding: 6, borderRadius: 10,
+                    background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+                    border: '1px solid rgba(245,158,11,0.25)',
+                    boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                    display: 'flex', flexWrap: 'wrap', gap: 4,
+                    maxHeight: 160, overflowY: 'auto',
+                  }}>
+                    {SUBJECT_OPTIONS.map(subj => (
+                      <button key={subj} onClick={() => {
+                        setClassSubjects(prev => ({ ...prev, [cls.id]: subj }));
+                        setOpenDropdownId(null);
+                      }} style={{
+                        padding: '4px 10px', borderRadius: 6,
+                        background: currentSubject === subj ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(245,158,11,0.06)',
+                        border: currentSubject === subj ? '1px solid #f59e0b' : '1px solid rgba(245,158,11,0.12)',
+                        color: currentSubject === subj ? '#fff' : '#fbbf24',
+                        fontSize: 'clamp(9px, 1.8vw, 11px)', fontWeight: currentSubject === subj ? 700 : 500,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                      }}>{subj}</button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Mini seat preview */}
@@ -314,34 +514,77 @@ function TeacherControl({ classrooms, onBack, onCreateEvent }) {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, color: '#64748b' }}>👥 {occupied} תלמידים</span>
-                <button onClick={() => setEditingClassId(cls.id)} style={{
-                  padding: '8px 16px', borderRadius: 8,
-                  background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)',
-                  color: '#7dd3fc', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}>🪑 ערוך מושבים</button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setEditingDetailsId(isEditingDetails ? null : cls.id)} style={{
+                    padding: 'clamp(6px, 1.2vw, 8px) clamp(10px, 2vw, 14px)', borderRadius: 8,
+                    background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)',
+                    color: '#fbbf24', fontSize: 'clamp(9px, 1.8vw, 11px)', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>✏️ ערוך פרטים</button>
+                  <button onClick={() => setEditingClassId(cls.id)} style={{
+                    padding: 'clamp(6px, 1.2vw, 8px) clamp(10px, 2vw, 14px)', borderRadius: 8,
+                    background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)',
+                    color: '#7dd3fc', fontSize: 'clamp(9px, 1.8vw, 11px)', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>🪑 ערוך מושבים</button>
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
+      {/* Removed classes restore bar */}
+      {removedClasses.length > 0 && (
+        <div style={{
+          marginBottom: 'clamp(14px, 3vw, 20px)', padding: 'clamp(10px, 2vw, 16px)',
+          borderRadius: 'clamp(10px, 2vw, 14px)',
+          background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)',
+        }}>
+          <div style={{ fontSize: 'clamp(10px, 2vw, 12px)', color: '#f87171', marginBottom: 8, fontWeight: 600 }}>
+            🚫 כיתות שהוסרו ({removedClasses.length})
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {removedClasses.map(cls => (
+              <button key={cls.id} onClick={() => restoreClass(cls.id)} style={{
+                padding: 'clamp(5px, 1vw, 7px) clamp(10px, 2vw, 14px)',
+                borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6,
+                background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',
+                color: '#a5b4fc', fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.12)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.06)'; }}
+              >
+                <span style={{ color: '#10b981', fontSize: 'clamp(11px, 2.2vw, 14px)' }}>+</span>
+                {cls.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Create button */}
-      <button onClick={handleCreate} style={{
+      <button onClick={handleCreate} disabled={includedClasses.length === 0} style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(6px, 1.5vw, 10px)',
         width: '100%', maxWidth: 600, margin: '0 auto', padding: 'clamp(14px, 3vw, 18px) clamp(16px, 4vw, 32px)',
-        background: 'linear-gradient(135deg, #10b981, #059669)',
-        border: 'none', borderRadius: 'clamp(10px, 2vw, 14px)', color: '#fff', fontSize: 'clamp(14px, 3vw, 17px)', fontWeight: 700,
-        cursor: 'pointer', boxShadow: '0 8px 32px rgba(16,185,129,0.35)',
+        background: includedClasses.length === 0
+          ? 'rgba(100,116,139,0.2)'
+          : 'linear-gradient(135deg, #10b981, #059669)',
+        border: 'none', borderRadius: 'clamp(10px, 2vw, 14px)',
+        color: includedClasses.length === 0 ? '#64748b' : '#fff',
+        fontSize: 'clamp(14px, 3vw, 17px)', fontWeight: 700,
+        cursor: includedClasses.length === 0 ? 'not-allowed' : 'pointer',
+        boxShadow: includedClasses.length === 0 ? 'none' : '0 8px 32px rgba(16,185,129,0.35)',
         transition: 'all 0.3s',
       }}
-      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(16,185,129,0.5)'; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(16,185,129,0.35)'; }}
+      onMouseEnter={e => { if (includedClasses.length > 0) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(16,185,129,0.5)'; }}}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = includedClasses.length === 0 ? 'none' : '0 8px 32px rgba(16,185,129,0.35)'; }}
       >
         <span style={{ fontSize: 22 }}>📝</span>
-        צור אירוע מבחן ({classrooms.length} כיתות)
+        צור אירוע מבחן ({includedClasses.length} כיתות)
       </button>
     </div>
   );
@@ -352,6 +595,223 @@ function EventsPage({ events, setEvents, classrooms, onBack, onCreateNew, onStar
   const [expandedEventId, setExpandedEventId] = useState(null);
   const [editingSeatClassId, setEditingSeatClassId] = useState(null);
   const [editingSeatEventId, setEditingSeatEventId] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  // ── PDF Generation (Canvas-based for Hebrew support) ──
+  const generateSeatMapPDF = async (event) => {
+    setPdfLoading(true);
+    try {
+      // Load jsPDF
+      if (!window.jspdf) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: 'a4', hotfixes: ['px_scaling'] });
+      const dateStr = event.createdAt.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+      const timeStr = event.createdAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+
+      // Canvas dimensions (A4 landscape at 2x for crisp text)
+      const W = 1684, H = 1190;
+
+      for (let ci = 0; ci < event.classrooms.length; ci++) {
+        if (ci > 0) doc.addPage();
+        const cls = event.classrooms[ci];
+        const seats = event.seatMaps[cls.id] || [];
+        const subjectName = cls.examSubject || cls.subject || 'מבחן';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+
+        // ── Background ──
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, W, H);
+
+        // ── Page border ──
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(20, 20, W - 40, H - 40);
+
+        // ── Header ──
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#1e293b';
+        ctx.font = 'bold 42px "Segoe UI", Arial, sans-serif';
+        ctx.fillText(cls.name, W / 2, 72);
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '24px "Segoe UI", Arial, sans-serif';
+        ctx.fillText(`${cls.teacher}  |  מקצוע: ${subjectName}  |  ${cls.grade}  |  ${dateStr}  ${timeStr}`, W / 2, 108);
+
+        ctx.fillStyle = '#6366f1';
+        ctx.font = 'bold 20px "Segoe UI", Arial, sans-serif';
+        ctx.fillText(`${cls.studentCount} תלמידים`, W / 2, 138);
+
+        // ── Whiteboard ──
+        const boardY = 158;
+        ctx.fillStyle = '#e2e8f0';
+        const bw = 400, bh = 36;
+        ctx.beginPath();
+        ctx.roundRect(W / 2 - bw / 2, boardY, bw, bh, 10);
+        ctx.fill();
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
+        ctx.fillText('לוח', W / 2, boardY + 24);
+
+        // ── Desk Grid ──
+        const gridStartY = 215;
+        const deskW = 230, deskH = 170, gapX = 24, gapY = 22;
+        const cols = 6, rows = 4;
+        const totalGridW = cols * deskW + (cols - 1) * gapX;
+        const startX = (W - totalGridW) / 2;
+
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            const x = startX + col * (deskW + gapX);
+            const y = gridStartY + row * (deskH + gapY);
+
+            const leftSeat = seats.find(s => s.row === row && s.col === col && s.side === 0);
+            const rightSeat = seats.find(s => s.row === row && s.col === col && s.side === 1);
+
+            // Desk border
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(x, y, deskW, deskH, 8);
+            ctx.stroke();
+
+            // Center divider
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(x + deskW / 2, y + 8);
+            ctx.lineTo(x + deskW / 2, y + deskH - 24);
+            ctx.stroke();
+
+            // Desk number label
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = '12px "Segoe UI", Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${row + 1}-${col + 1}`, x + deskW / 2, y + deskH - 6);
+
+            // Draw a seat
+            const drawSeat = (seat, sx, sw) => {
+              if (seat?.student) {
+                const isBoy = seat.student.gender === 'boy';
+                // Seat background
+                ctx.fillStyle = isBoy ? '#dbeafe' : '#fce7f3';
+                ctx.beginPath();
+                ctx.roundRect(sx + 4, y + 6, sw - 8, deskH - 34, 6);
+                ctx.fill();
+
+                // Border
+                ctx.strokeStyle = isBoy ? '#93c5fd' : '#f9a8d4';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.roundRect(sx + 4, y + 6, sw - 8, deskH - 34, 6);
+                ctx.stroke();
+
+                // Gender icon
+                ctx.fillStyle = isBoy ? '#2563eb' : '#db2777';
+                ctx.font = 'bold 22px "Segoe UI", Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(isBoy ? '👦' : '👧', sx + sw / 2, y + 38);
+
+                // Name
+                ctx.fillStyle = '#1e293b';
+                ctx.font = 'bold 15px "Segoe UI", Arial, sans-serif';
+                let name = seat.student.name;
+                if (name.length > 12) name = name.substring(0, 11) + '..';
+                ctx.fillText(name, sx + sw / 2, y + 62);
+
+                // Student ID
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '12px "Segoe UI", Arial, sans-serif';
+                ctx.fillText(`#${seat.student.id}`, sx + sw / 2, y + 80);
+              } else {
+                // Empty seat
+                ctx.fillStyle = '#f8fafc';
+                ctx.beginPath();
+                ctx.roundRect(sx + 4, y + 6, sw - 8, deskH - 34, 6);
+                ctx.fill();
+                ctx.fillStyle = '#e2e8f0';
+                ctx.font = '14px "Segoe UI", Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('—', sx + sw / 2, y + 50);
+              }
+            };
+
+            drawSeat(leftSeat, x, deskW / 2);
+            drawSeat(rightSeat, x + deskW / 2, deskW / 2);
+          }
+        }
+
+        // ── Legend ──
+        const legendY = gridStartY + rows * (deskH + gapY) + 10;
+        ctx.textAlign = 'right';
+
+        // Boy legend
+        ctx.fillStyle = '#dbeafe';
+        ctx.beginPath();
+        ctx.roundRect(W - 120, legendY, 30, 18, 4);
+        ctx.fill();
+        ctx.strokeStyle = '#93c5fd';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(W - 120, legendY, 30, 18, 4);
+        ctx.stroke();
+        ctx.fillStyle = '#475569';
+        ctx.font = '14px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('👦 בן', W - 130, legendY + 14);
+
+        // Girl legend
+        ctx.fillStyle = '#fce7f3';
+        ctx.beginPath();
+        ctx.roundRect(W - 250, legendY, 30, 18, 4);
+        ctx.fill();
+        ctx.strokeStyle = '#f9a8d4';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(W - 250, legendY, 30, 18, 4);
+        ctx.stroke();
+        ctx.fillStyle = '#475569';
+        ctx.textAlign = 'right';
+        ctx.fillText('👧 בת', W - 260, legendY + 14);
+
+        // Page number
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '14px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${ci + 1} / ${event.classrooms.length} עמוד`, 50, legendY + 14);
+
+        // ── Footer ──
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = '14px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('CatCheat — מערכת ניטור חכמה למניעת העתקות', W / 2, H - 30);
+
+        // ── Add canvas to PDF ──
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const pdfW = doc.internal.pageSize.getWidth();
+        const pdfH = doc.internal.pageSize.getHeight();
+        doc.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
+      }
+
+      doc.save(`מפת-מושבים-${dateStr}.pdf`);
+    } catch (err) {
+      console.error('PDF error:', err);
+      alert('שגיאה ביצירת PDF');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   const editingEvent = events.find(e => e.id === editingSeatEventId);
   const editingClass = editingEvent?.classrooms?.find(c => c.id === editingSeatClassId);
@@ -490,6 +950,14 @@ function EventsPage({ events, setEvents, classrooms, onBack, onCreateNew, onStar
                         justifyContent: 'center',
                       }}>📊 דשבורד</button>
                     )}
+                    <button onClick={() => generateSeatMapPDF(event)} disabled={pdfLoading} style={{
+                      padding: 'clamp(8px, 1.5vw, 10px) clamp(12px, 2vw, 18px)', borderRadius: 10,
+                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                      border: 'none', color: '#fff', fontSize: 'clamp(11px, 2vw, 12px)', fontWeight: 700,
+                      cursor: pdfLoading ? 'wait' : 'pointer', boxShadow: '0 4px 16px rgba(245,158,11,0.3)',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      opacity: pdfLoading ? 0.7 : 1,
+                    }}>{pdfLoading ? '⏳' : '📥'} מפת מושבים PDF</button>
                     <button onClick={() => setExpandedEventId(isExpanded ? null : event.id)} style={{
                       padding: 'clamp(8px, 1.5vw, 10px) clamp(10px, 1.8vw, 14px)', borderRadius: 10,
                       background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)',
@@ -512,7 +980,7 @@ function EventsPage({ events, setEvents, classrooms, onBack, onCreateNew, onStar
                       padding: '3px 8px', borderRadius: 5, fontSize: 'clamp(8px, 1.5vw, 9px)',
                       background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.1)',
                       color: '#94a3b8',
-                    }}>{cls.name} ({cls.studentCount})</span>
+                    }}>{cls.name} • {cls.examSubject || cls.subject} ({cls.studentCount})</span>
                   ))}
                 </div>
 

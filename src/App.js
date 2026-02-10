@@ -795,7 +795,7 @@ function EventsPage({ events, setEvents, classrooms, onBack, onCreateNew, onStar
         ctx.fillStyle = '#cbd5e1';
         ctx.font = '14px "Segoe UI", Arial, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('CatCheat — מערכת ניטור חכמה למניעת העתקות', W / 2, H - 30);
+        ctx.fillText('Catcheat — מערכת ניטור חכמה למניעת העתקות', W / 2, H - 30);
 
         // ── Add canvas to PDF ──
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -1156,7 +1156,7 @@ function LoginScreen({ onLogin }) {
             boxShadow: '0 20px 60px rgba(99,102,241,0.5), 0 0 120px rgba(99,102,241,0.2)',
             position: 'relative',
           }}>
-            <img src={process.env.PUBLIC_URL + '/Logo.png'} alt="CatCheat"
+            <img src={process.env.PUBLIC_URL + '/Logo.png'} alt="Catcheat"
               style={{ width: '55%', height: '55%', objectFit: 'contain' }}
               onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<span style="font-size:32px">🛡️</span>'; }}
             />
@@ -1166,7 +1166,7 @@ function LoginScreen({ onLogin }) {
               fontSize: 'clamp(24px, 6vw, 32px)', fontWeight: 800, margin: 0, letterSpacing: '-0.5px',
               background: 'linear-gradient(135deg, #fff 0%, #c7d2fe 50%, #a5b4fc 100%)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            }}>CatCheat</h1>
+            }}>Catcheat</h1>
             <p style={{
               fontSize: 'clamp(10px, 2.5vw, 14px)', color: '#64748b', margin: '6px 0 0', letterSpacing: '2px',
               textTransform: 'uppercase', fontWeight: 500,
@@ -1273,7 +1273,7 @@ function LoginScreen({ onLogin }) {
         </div>
 
         <p style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: '#334155', textAlign: 'center' }}>
-          CatCheat © 2025 — מערכת ניטור כיתות חכמה מבוססת בינה מלאכותית
+          Catcheat © 2025 — מערכת ניטור כיתות חכמה מבוססת בינה מלאכותית
         </p>
       </div>
 
@@ -2362,7 +2362,7 @@ export default function ClassroomMonitoringSystem() {
           overflow: 'hidden',
           position: 'relative',
         }}>
-          <img src={process.env.PUBLIC_URL + '/Logo.png'} alt="CatCheat"
+          <img src={process.env.PUBLIC_URL + '/Logo.png'} alt="Catcheat"
             style={{ width: '70%', height: '70%', objectFit: 'contain' }}
             onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<span style="font-size:44px">🛡️</span>'; }}
           />
@@ -2374,7 +2374,7 @@ export default function ClassroomMonitoringSystem() {
           background: 'linear-gradient(135deg, #fff 0%, #a5b4fc 50%, #7dd3fc 100%)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
           letterSpacing: '-1px', textAlign: 'center',
-        }}>CatCheat</h1>
+        }}>Catcheat</h1>
 
         <p style={{
           fontSize: 'clamp(12px, 3vw, 15px)', color: '#64748b', margin: '0 0 8px', textAlign: 'center',
@@ -2450,7 +2450,7 @@ export default function ClassroomMonitoringSystem() {
 
         {/* Footer */}
         <div style={{ marginTop: 'clamp(24px, 6vw, 48px)', fontSize: 'clamp(9px, 1.8vw, 10px)', color: '#334155', textAlign: 'center' }}>
-          CatCheat v2.1 • Powered by AI • © {new Date().getFullYear()}
+          Catcheat v2.1 • Powered by AI • © {new Date().getFullYear()}
         </div>
 
         {/* Success Toast */}
@@ -2583,7 +2583,7 @@ export default function ClassroomMonitoringSystem() {
             borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 8px 32px rgba(99,102,241,0.4)', overflow: 'hidden',
           }} className="logo-box">
-            <img src={process.env.PUBLIC_URL + '/Logo.png'} alt="CatCheat"
+            <img src={process.env.PUBLIC_URL + '/Logo.png'} alt="Catcheat"
               style={{ width: '70%', height: '70%', objectFit: 'contain' }}
               onError={(e) => { e.target.style.display = 'none'; }}
             />
@@ -2593,7 +2593,7 @@ export default function ClassroomMonitoringSystem() {
               fontSize: 'clamp(18px, 3vw, 28px)', fontWeight: 800, margin: 0,
               background: 'linear-gradient(90deg, #fff, #a5b4fc)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            }} className="logo-title">CatCheat</h1>
+            }} className="logo-title">Catcheat</h1>
             <p style={{ fontSize: 'clamp(9px, 1.8vw, 12px)', color: '#64748b', margin: 0 }} className="logo-sub">
               מערכת ניטור חכמה למניעת העתקות
             </p>
@@ -3418,7 +3418,7 @@ function ClassroomDetail({ classroom, onBack }) {
               </div>
             ))}
           </div>
-          <span style={{ fontSize: 7, color: '#334155', fontFamily: 'monospace' }}>CatCheat v2.1</span>
+          <span style={{ fontSize: 7, color: '#334155', fontFamily: 'monospace' }}>Catcheat v2.1</span>
         </div>
       </div>
 
